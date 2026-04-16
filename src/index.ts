@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import cors from 'cors';
 import express from 'express';
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { Counter, Gauge, Registry, collectDefaultMetrics } from 'prom-client';
 
 // Create a dedicated registry to avoid default global metrics clutter
