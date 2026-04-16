@@ -27,6 +27,8 @@ const flags = parseFlags();
 const port = process.env.PORT ? Number(process.env.PORT) : (flags.port ? Number(flags.port) : 3000);
 const host = process.env.HOST ?? flags.host ?? '0.0.0.0';
 const app = express();
+// Record server start time for uptime calculation
+const serverStartTime = Date.now();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
@@ -256,6 +258,12 @@ app.post("/clients/:id/message", async (req, res) => {
     console.error(`[Message][${id}] Command '${type}' error:`, e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// Healthcheck endpoint – returns status and uptime
+app.get('/healthz', (req, res) => {
+  const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+  res.json({ status: 'ok', uptime: `${uptimeSeconds}` });
 });
 
 // (host & port are now defined above after flag parsing)
