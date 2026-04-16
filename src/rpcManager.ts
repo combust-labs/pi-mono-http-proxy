@@ -32,6 +32,46 @@ export class RpcManager {
     return id;
   }
 
+  /**
+   * Load a JSON configuration file that contains an array of client specifications.
+   * Each entry may provide a `name` and the `options` required by RpcClient.
+   * All clients are started automatically; operations are logged.
+   */
+  async loadFromFile(filePath: string): Promise<void> {
+    const fs = await import('fs');
+    const path = await import('path');
+    const absolute = path.resolve(filePath);
+    console.log(`[RpcManager] Loading RPC client configuration from ${absolute}`);
+    let raw: string;
+    try {
+      raw = await fs.promises.readFile(absolute, 'utf-8');
+    } catch (e: any) {
+      console.error(`[RpcManager] Failed to read config file: ${e.message}`);
+      throw e;
+    }
+    let configs: Array<{ name?: string; options: RpcClientOptions }>;
+    try {
+      configs = JSON.parse(raw);
+    } catch (e: any) {
+      console.error(`[RpcManager] Invalid JSON in config file: ${e.message}`);
+      throw e;
+    }
+    if (!Array.isArray(configs)) {
+      const msg = 'Configuration file must export an array of client configs';
+      console.error(`[RpcManager] ${msg}`);
+      throw new Error(msg);
+    }
+    for (const cfg of configs) {
+      const { name, options } = cfg;
+      try {
+        const id = await this.create(options, name);
+        console.log(`[RpcManager] Started client ${name ?? id}`);
+      } catch (e: any) {
+        console.error(`[RpcManager] Failed to start client ${name ?? '(unnamed)'}: ${e.message}`);
+      }
+    }
+  }
+
   /** Return a plain object mapping client identifier (id or name) → options used at creation */
   list(): Record<string, RpcClientOptions> {
     const result: Record<string, RpcClientOptions> = {};

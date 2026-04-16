@@ -12,6 +12,13 @@ app.use(express.json({ limit: "10mb" }));
 
 const manager = new RpcManager();
 
+// If a configuration file path is provided via environment variable, load and start clients automatically.
+if (process.env.RPC_CONFIG_PATH) {
+  manager.loadFromFile(process.env.RPC_CONFIG_PATH).catch(e => {
+    console.error('Failed to load RPC client configuration:', e);
+  });
+}
+
 // List existing RPC clients (id -> creation options)
 app.get("/clients", (req, res) => {
   const list = manager.list();
