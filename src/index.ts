@@ -7,6 +7,25 @@ import type { ImageContent } from '../node_modules/@mariozechner/pi-ai/dist/type
 import type { RpcClientOptions } from '../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client'
 
 import { incHttpRequests, register, contentType, incMessagesSent, incMessagesReceived, addBytesSent, addBytesReceived } from './metrics';
+
+// Simple command‑line flag parsing (e.g., "--port=4000" or "--host=127.0.0.1")
+function parseFlags(): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith('--')) {
+      const [key, val] = arg.replace(/^--/, '').split('=', 2);
+      if (key && val !== undefined) {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+}
+
+const flags = parseFlags();
+// Environment variables take precedence over flags.
+const port = process.env.PORT ? Number(process.env.PORT) : (flags.port ? Number(flags.port) : 3000);
+const host = process.env.HOST ?? flags.host ?? '0.0.0.0';
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
@@ -24,8 +43,11 @@ app.use((req, res, next) => {
 const manager = new RpcManager();
 
 // If a configuration file path is provided via environment variable, load and start clients automatically.
-if (process.env.RPC_CONFIG_PATH) {
-  manager.loadFromFile(process.env.RPC_CONFIG_PATH).catch(e => {
+// Load RPC client configuration from either an env var or a command‑line flag.
+// Flag name: --config (or --rpc-config) – env var RPC_CONFIG_PATH takes precedence.
+const configPath = process.env.RPC_CONFIG_PATH ?? flags.config ?? flags.rpcConfig;
+if (configPath) {
+  manager.loadFromFile(configPath).catch(e => {
     console.error('Failed to load RPC client configuration:', e);
   });
 }
@@ -236,7 +258,7 @@ app.post("/clients/:id/message", async (req, res) => {
   }
 });
 
-const port = process.env.PORT ?? 3000;
+// (host & port are now defined above after flag parsing)
 app.get('/metrics', async (req, res) => {
   try {
     const metrics = await register.metrics();
@@ -248,6 +270,47 @@ app.get('/metrics', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Pi RPC HTTP server listening on port ${port}`);
+const server = app.listen(port, host, () => {
+  console.log(`Pi RPC HTTP server listening on ${host}:${port}`);
 });
+
+// Graceful shutdown handling
+const shutdown = async () => {
+  console.log('Received shutdown signal, closing HTTP server...');
+  // If the server is not listening, skip close to avoid ERR_SERVER_NOT_RUNNING
+  if (server && (server as any).listening) {
+    server.close(async (err) => {
+      if (err && (err as any).code !== 'ERR_SERVER_NOT_RUNNING') {
+        console.error('Error closing HTTP server:', err);
+      }
+      try {
+        await manager.shutdown();
+      } catch (e) {
+        console.error('Error during RPC manager shutdown:', e);
+      }
+      process.exit(err ? 1 : 0);
+    });
+  } else {
+    // Server not running; just shut down RPC clients
+    try {
+      await manager.shutdown();
+    } catch (e) {
+      console.error('Error during RPC manager shutdown:', e);
+    }
+    process.exit(0);
+  }
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+// Ensure RPC clients are shut down on process exit (e.g., uncaught exceptions)
+process.on('beforeExit', async (code) => {
+  console.log(`Process beforeExit with code ${code}, shutting down RPC clients...`);
+  try {
+    await manager.shutdown();
+  } catch (e) {
+    console.error('Error during RPC manager shutdown on beforeExit:', e);
+  }
+});
+

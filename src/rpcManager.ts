@@ -18,6 +18,12 @@ export class RpcManager {
   /** Create and start a new RpcClient with the given options. Returns its UUID. */
   async create(options: RpcClientOptions, name?: string): Promise<string> {
     console.log(`[RpcManager] Creating new client with options:`, options);
+    // If a name is provided and already exists, return the existing client's id instead of creating a duplicate.
+    if (name && this.nameToId.has(name)) {
+      const existingId = this.nameToId.get(name)!;
+      console.warn(`[RpcManager] Client name "${name}" already exists, returning existing client id ${existingId}`);
+      return existingId;
+    }
     // Ensure RPC mode flag is present (already handled in args processing)
     // Build a command string for logging – include cliPath, cwd, env and args
     const cli = options?.cliPath ?? 'dist/cli.js';
@@ -26,7 +32,11 @@ export class RpcManager {
     const argsStr = (options?.args ?? []).join(' ');
     const cmdLog = `${envPairs ? envPairs+' ' : ''}${cli} ${argsStr}`.trim();
     console.log(`[RpcManager] Spawn command: ${cmdLog} (cwd=${cwd})`);
-    const id = uuidv4();
+    // Generate a unique UUID; in the extremely unlikely event of a collision, generate a new one.
+    let id = uuidv4();
+    while (this.clients.has(id)) {
+      id = uuidv4();
+    }
     // Ensure the RPC client is started in RPC mode, overriding any user‑provided mode.
     const baseArgs = options?.args ?? [];
     // Remove any existing '--mode' flag (both '--mode' and '--mode=...')
@@ -42,9 +52,7 @@ export class RpcManager {
     await client.start();
     const stored: StoredClient = { client, options };
     if (name) {
-      if (this.nameToId.has(name)) {
-        throw new Error(`Client name "${name}" already in use`);
-      }
+      // At this point we already know the name is not taken.
       stored.name = name;
       this.nameToId.set(name, id);
     }
@@ -139,6 +147,22 @@ export class RpcManager {
   getName(id: string): string | undefined {
     const stored = this.clients.get(id);
     return stored?.name;
+  }
+
+  /** Gracefully stop all RPC clients – used during server shutdown */
+  async shutdown(): Promise<void> {
+    console.log('[RpcManager] Shutting down all clients');
+    const stopPromises: Promise<void>[] = [];
+    for (const [id, stored] of this.clients.entries()) {
+      stopPromises.push(stored.client.stop().catch(e => {
+        console.error(`[RpcManager] Error stopping client ${id}:`, e);
+      }));
+      if (stored.name) this.nameToId.delete(stored.name);
+    }
+    await Promise.all(stopPromises);
+    this.clients.clear();
+    setRpcClients(0);
+    console.log('[RpcManager] Shutdown complete');
   }
 
 }
