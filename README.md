@@ -204,4 +204,5 @@ The `-N` flag tells `curl` to **not buffer** the output, allowing you to see eve
 ---
 
 ## License
-This example server is provided under the same license as the surrounding repository (see the root `LICENSE` file).
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+This project is licensed under the Apache License, Version 2.0. See the LICENSE file for details.
