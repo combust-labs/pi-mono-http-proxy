@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 
 # A simple wrapper to install dependencies, build the project, and start the server.
 # Usage: ./run.sh [command]
