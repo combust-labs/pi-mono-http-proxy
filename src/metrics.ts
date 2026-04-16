@@ -17,7 +17,7 @@ export const httpRequestsTotal = new Counter({
 export const messagesSentTotal = new Counter({
   name: 'rpc_client_messages_sent_total',
   help: 'Total number of messages sent to RPC clients',
-  labelNames: ['client'],
+  labelNames: ['client', 'name', 'provider', 'model'],
   registers: [register],
 });
 
@@ -25,7 +25,7 @@ export const messagesSentTotal = new Counter({
 export const messagesReceivedTotal = new Counter({
   name: 'rpc_client_messages_received_total',
   help: 'Total number of messages received from RPC clients',
-  labelNames: ['client'],
+  labelNames: ['client', 'name', 'provider', 'model'],
   registers: [register],
 });
 
@@ -33,7 +33,7 @@ export const messagesReceivedTotal = new Counter({
 export const bytesSentTotal = new Counter({
   name: 'rpc_client_bytes_sent_total',
   help: 'Total number of bytes sent to RPC clients',
-  labelNames: ['client'],
+  labelNames: ['client', 'name', 'provider', 'model'],
   registers: [register],
 });
 
@@ -41,7 +41,7 @@ export const bytesSentTotal = new Counter({
 export const bytesReceivedTotal = new Counter({
   name: 'rpc_client_bytes_received_total',
   help: 'Total number of bytes received from RPC clients',
-  labelNames: ['client'],
+  labelNames: ['client', 'name', 'provider', 'model'],
   registers: [register],
 });
 
@@ -56,20 +56,25 @@ export function incHttpRequests(method: string, route: string, status: number) {
   httpRequestsTotal.inc({ method, route, status: String(status) });
 }
 
-export function incMessagesSent(client: string) {
-  messagesSentTotal.inc({ client });
+export function incMessagesSent(labels: { client: string, name?: string, provider?: string, model?: string }) {
+  // Ensure all label keys exist
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+  messagesSentTotal.inc(full);
 }
 
-export function incMessagesReceived(client: string) {
-  messagesReceivedTotal.inc({ client });
+export function incMessagesReceived(labels: { client: string, name?: string, provider?: string, model?: string }) {
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+  messagesReceivedTotal.inc(full);
 }
 
-export function addBytesSent(client: string, bytes: number) {
-  bytesSentTotal.inc({ client }, bytes);
+export function addBytesSent(labels: { client: string, name?: string, provider?: string, model?: string }, bytes: number) {
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+  bytesSentTotal.inc(full, bytes);
 }
 
-export function addBytesReceived(client: string, bytes: number) {
-  bytesReceivedTotal.inc({ client }, bytes);
+export function addBytesReceived(labels: { client: string, name?: string, provider?: string, model?: string }, bytes: number) {
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+  bytesReceivedTotal.inc(full, bytes);
 }
 
 export function setRpcClients(count: number) {

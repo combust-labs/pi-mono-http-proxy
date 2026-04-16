@@ -100,15 +100,26 @@ app.post("/clients/:id/message", async (req, res) => {
   const payload = req.body as any;
   const type: string = payload.type ?? "prompt";
 
+  // Helper to get metric labels for this client
+  const getLabels = () => {
+    const name = manager.getName(id) ?? id;
+    const opts = manager.list()[id] ?? {} as any;
+    const provider = opts.provider;
+    const model = opts.model ?? '';
+    const labels: any = { client: id, name, model };
+    if (provider) labels.provider = provider;
+    return labels;
+  };
+
   // Prepare response streaming for commands that emit events (prompt, steer, follow_up)
   const streamCommands = new Set(["prompt", "steer", "follow_up"]);
 
   if (streamCommands.has(type)) {
     const { message, images, streamingBehavior } = payload as { message: string; images?: ImageContent[]; streamingBehavior?: string };
     // Increment sent metrics (one message per request)
-    incMessagesSent(id);
+    incMessagesSent(getLabels());
     // Approximate bytes sent (JSON payload size)
-    addBytesSent(id, Buffer.byteLength(JSON.stringify(payload)));
+    addBytesSent(getLabels(), Buffer.byteLength(JSON.stringify(payload)));
 
     if (typeof message !== "string") {
       console.warn(`[Message] Invalid message payload for client ${id}`);
@@ -126,8 +137,8 @@ app.post("/clients/:id/message", async (req, res) => {
         const eventStr = JSON.stringify(event) + "\n";
         res.write(eventStr);
         // Metrics for messages received from client
-        incMessagesReceived(id);
-        addBytesReceived(id, Buffer.byteLength(eventStr));
+        incMessagesReceived(getLabels());
+        addBytesReceived(getLabels(), Buffer.byteLength(eventStr));
         if (event.type === "agent_end") {
           console.log(`[Message][${id}] Agent ended, cleaning up`);
           cleanup();
