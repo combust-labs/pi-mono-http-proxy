@@ -32,7 +32,7 @@ fi
 
 # Default workflow
 echo "Installing dependencies..."
-npm ci
+npm install
 
 echo "Building the project..."
 npm run build
