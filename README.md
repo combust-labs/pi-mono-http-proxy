@@ -73,20 +73,51 @@ The response always contains the generated UUID (`id`). The supplied `name` (if 
   - `204 No Content` – client successfully stopped.
   - `404 Not Found` – no client with that UUID.
 
-### Send a message (stream events)
+### Send a message (or other RPC commands)
 **`POST /clients/:id/message`**
-```json
-{
-  "message": "Explain the quicksort algorithm.",
-  "images": []   // optional, array of ImageContent objects
-}
-```
-- **Headers** – `Content-Type: application/json`
-- **Response** – `Content-Type: application/jsonl`
-  - Each line is a JSON‑encoded `AgentEvent` emitted by the Pi agent (e.g., `message_start`, `message_update`, `agent_end`).
-  - The stream ends when an `agent_end` event is received or the client disconnects.
-- **Error handling** – on malformed request or missing client a JSON error payload with the appropriate HTTP status is returned.
+The body must contain a `type` field that matches one of the RPC commands defined in `rpc.md`. If `type` is omitted it defaults to `"prompt"`.
 
+#### Streaming commands (events are streamed as JSON‑L)
+| `type` | Required fields | Description |
+|--------|----------------|-------------|
+| `prompt` | `message` (string) – optional `images` | Sends a user prompt to the agent. |
+| `steer` | `message` (string) – optional `images` | Queues a steering message while the agent is running. |
+| `follow_up` | `message` (string) – optional `images` | Queues a follow‑up message to be processed after the agent finishes. |
+
+For these three commands the server streams **events** (`AgentEvent`) back to the client using **JSON‑L** (`Content‑Type: application/jsonl`). Each line is a JSON‑encoded event such as `agent_start`, `message_update`, `agent_end`, etc. The stream ends when an `agent_end` event is received.
+
+#### Non‑streaming commands (JSON response)
+For all other RPC commands the request body must include `type` and the command‑specific parameters. The server executes the command and returns a single JSON object:
+```json
+{ "type": "<command>", "result": <command‑specific‑payload> }
+```
+Supported non‑streaming commands include (but are not limited to):
+- `abort`
+- `bash` (requires `command` string)
+- `abort_bash`
+- `new_session` (optional `parentSession`)
+- `set_model` (`provider` & `modelId`)
+- `cycle_model`
+- `get_state`
+- `set_steering_mode` (`mode`)
+- `set_follow_up_mode` (`mode`)
+- `compact` (optional `customInstructions`)
+- `set_auto_compaction` (`enabled`)
+- `set_auto_retry` (`enabled`)
+- `abort_retry`
+- `get_session_stats`
+- `export_html` (optional `outputPath`)
+- `switch_session` (`sessionPath`)
+- `fork` (`entryId`)
+- `get_fork_messages`
+- `get_last_assistant_text`
+- `set_session_name` (`name`)
+- `get_messages`
+- `get_commands`
+
+**Headers** – `Content-Type: application/json` for the request.
+
+**Error handling** – If the request payload is malformed, a required field is missing, or the client identifier does not exist, the server returns a JSON error with the appropriate HTTP status (400/404/500).
 ---
 
 ## Configuration
@@ -103,6 +134,30 @@ The server itself has minimal configuration; most behaviour is driven by the **R
 
 All options are **optional**; omitted values fall back to the Pi defaults.
 
+### Auto‑start configuration file
+The server can automatically start a set of RPC clients on launch when the environment variable `RPC_CONFIG_PATH` points to a JSON file. The file must export an **array** of client specifications. Each entry may contain:
+
+- `name` *(optional)* – a human‑readable identifier. Must be unique among the list.
+- `options` – an object matching the `RpcClientOptions` type (same fields described above).
+
+**Example `rpc-clients.json`**
+```json
+[
+  {
+    "name": "assistant‑openai",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "env": { "OPENAI_API_KEY": "sk-..." }
+  },
+  {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet",
+    "args": ["--no-session"]
+  }
+]
+```
+When the server starts, it will read this file, create each client, and log success or failure. Clients can later be accessed via their `name` (if provided) or the generated UUID.
+
 ---
 
 ## Example usage (cURL)
@@ -117,7 +172,7 @@ echo "Created client $client_id"
 # 2️⃣ Send a prompt and stream events (requires jq for pretty‑printing)
 curl -N -X POST http://localhost:3000/clients/$client_id/message \
   -H "Content-Type: application/json" \
-  -d '{"message":"Write a short Python script that prints \"Hello, world!\""}' |
+  -d '{"type":"prompt","message":"Write a short Python script that prints \"Hello, world!\""}' |
   while IFS= read -r line; do
     echo "Event:"; echo "$line" | jq .
   done

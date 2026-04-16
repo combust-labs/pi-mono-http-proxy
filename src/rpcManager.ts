@@ -17,8 +17,29 @@ export class RpcManager {
   /** Create and start a new RpcClient with the given options. Returns its UUID. */
   async create(options: RpcClientOptions, name?: string): Promise<string> {
     console.log(`[RpcManager] Creating new client with options:`, options);
+    // Ensure RPC mode flag is present (already handled in args processing)
+    // Build a command string for logging – include cliPath, cwd, env and args
+    const cli = options?.cliPath ?? 'dist/cli.js';
+    const cwd = options?.cwd ?? process.cwd();
+    const envPairs = options?.env ? Object.entries(options.env).map(([k,v])=>`${k}=${v}`).join(' ') : '';
+    const argsStr = (options?.args ?? []).join(' ');
+    const cmdLog = `${envPairs ? envPairs+' ' : ''}${cli} ${argsStr}`.trim();
+    console.log(`[RpcManager] Spawn command: ${cmdLog} (cwd=${cwd})`);
+
+    console.log(`[RpcManager] Creating new client with options:`, options);
     const id = uuidv4();
-    const client = new RpcClient(options);
+    // Ensure the RPC client is started in RPC mode, overriding any user‑provided mode.
+    const baseArgs = options?.args ?? [];
+    // Remove any existing '--mode' flag (both '--mode' and '--mode=...')
+    const filtered = baseArgs.filter(arg => {
+      if (arg === '--mode') return false;
+      if (arg.startsWith('--mode=')) return false;
+      return true;
+    });
+    // Append the required RPC mode flag
+    const finalArgs = [...filtered, '--mode', 'rpc'];
+    const clientOptions = { ...options, args: finalArgs };
+    const client = new RpcClient(clientOptions);
     await client.start();
     const stored: StoredClient = { client, options };
     if (name) {
@@ -49,7 +70,7 @@ export class RpcManager {
       console.error(`[RpcManager] Failed to read config file: ${e.message}`);
       throw e;
     }
-    let configs: Array<{ name?: string; options: RpcClientOptions }>;
+    let configs: any[];
     try {
       configs = JSON.parse(raw);
     } catch (e: any) {
@@ -62,9 +83,10 @@ export class RpcManager {
       throw new Error(msg);
     }
     for (const cfg of configs) {
-      const { name, options } = cfg;
+      // Each entry may contain an optional `name` and the rest are RpcClientOptions
+      const { name, ...options } = cfg as any;
       try {
-        const id = await this.create(options, name);
+        const id = await this.create(options as RpcClientOptions, name);
         console.log(`[RpcManager] Started client ${name ?? id}`);
       } catch (e: any) {
         console.error(`[RpcManager] Failed to start client ${name ?? '(unnamed)'}: ${e.message}`);
