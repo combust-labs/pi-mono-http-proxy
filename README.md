@@ -201,6 +201,14 @@ The `-N` flag tells `curl` to **not buffer** the output, allowing you to see eve
 - Image handling expects the same shape as `ImageContent` from the Pi SDK (base64 data, MIME type, etc.).
 - Because the RPC client streams events over stdout, the HTTP endpoint forwards them unchanged; any client capable of parsing JSONL can consume the stream.
 
+### Hugging Face Dataset
+The `hf-push-sessions` utility can push saved RPC client session files to a Hugging Face dataset. After running it, the dataset will be publicly available (or private depending on the repo settings) at:
+
+```
+https://huggingface.co/datasets/rgruchalski/combust-labs_pi-mono-http-proxy
+```
+You can browse the uploaded session files there, or use the Hugging Face Hub API to download them for analysis.
+
 ---
 
 ## License
