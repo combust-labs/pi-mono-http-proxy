@@ -6,9 +6,20 @@ import { RpcManager } from './rpcManager';
 import type { ImageContent } from '../node_modules/@mariozechner/pi-ai/dist/types'
 import type { RpcClientOptions } from '../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client'
 
+import { incHttpRequests, register, contentType, incMessagesSent, incMessagesReceived, addBytesSent, addBytesReceived } from './metrics';
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+
+// Middleware to record HTTP request metrics after response finishes
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    // Use the matched route if available, otherwise fallback to originalUrl
+    const route = (req as any).route?.path || req.originalUrl || req.url;
+    incHttpRequests(req.method, route, res.statusCode);
+  });
+  next();
+});
 
 const manager = new RpcManager();
 
@@ -70,6 +81,11 @@ app.post("/clients/:id/message", async (req, res) => {
 
   if (streamCommands.has(type)) {
     const { message, images, streamingBehavior } = payload as { message: string; images?: ImageContent[]; streamingBehavior?: string };
+    // Increment sent metrics (one message per request)
+    incMessagesSent(id);
+    // Approximate bytes sent (JSON payload size)
+    addBytesSent(id, Buffer.byteLength(JSON.stringify(payload)));
+
     if (typeof message !== "string") {
       console.warn(`[Message] Invalid message payload for client ${id}`);
       res.status(400).json({ error: "Missing or invalid 'message'" });
@@ -83,7 +99,11 @@ app.post("/clients/:id/message", async (req, res) => {
       // Log the full event for debugging/monitoring purposes
       console.log(`[Message][${id}] Event received:`, JSON.stringify(event));
       try {
-        res.write(JSON.stringify(event) + "\n");
+        const eventStr = JSON.stringify(event) + "\n";
+        res.write(eventStr);
+        // Metrics for messages received from client
+        incMessagesReceived(id);
+        addBytesReceived(id, Buffer.byteLength(eventStr));
         if (event.type === "agent_end") {
           console.log(`[Message][${id}] Agent ended, cleaning up`);
           cleanup();
@@ -217,6 +237,17 @@ app.post("/clients/:id/message", async (req, res) => {
 });
 
 const port = process.env.PORT ?? 3000;
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await register.metrics();
+    res.setHeader('Content-Type', contentType);
+    res.end(metrics);
+  } catch (e) {
+    console.error('Error collecting metrics', e);
+    res.status(500).end('Error collecting metrics');
+  }
+});
+
 app.listen(port, () => {
   console.log(`Pi RPC HTTP server listening on port ${port}`);
 });

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
     RpcClient, RpcClientOptions
 } from '../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client';
+import { setRpcClients } from './metrics';
 
 interface StoredClient {
   client: RpcClient;
@@ -25,8 +26,6 @@ export class RpcManager {
     const argsStr = (options?.args ?? []).join(' ');
     const cmdLog = `${envPairs ? envPairs+' ' : ''}${cli} ${argsStr}`.trim();
     console.log(`[RpcManager] Spawn command: ${cmdLog} (cwd=${cwd})`);
-
-    console.log(`[RpcManager] Creating new client with options:`, options);
     const id = uuidv4();
     // Ensure the RPC client is started in RPC mode, overriding any user‑provided mode.
     const baseArgs = options?.args ?? [];
@@ -50,6 +49,8 @@ export class RpcManager {
       this.nameToId.set(name, id);
     }
     this.clients.set(id, stored);
+    // Update gauge for active RPC clients
+    setRpcClients(this.clients.size);
     return id;
   }
 
@@ -126,6 +127,8 @@ export class RpcManager {
     await stored.client.stop();
     if (stored.name) this.nameToId.delete(stored.name);
     this.clients.delete(id);
+    // Update gauge after removal
+    setRpcClients(this.clients.size);
     return true;
   }
 
