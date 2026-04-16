@@ -42,6 +42,17 @@ npm run build && npm start
 ```
 The server listens on `PORT` (default **3000**) and logs the listening address.
 
+### Convenience script
+A helper script is provided at `bin/run.sh` which will install dependencies, build the project, and start the server in one command. Make it executable and run:
+```bash
+chmod +x bin/run.sh   # one‑time
+./bin/run.sh           # install → build → start (default workflow)
+# Or pass a custom npm script, e.g.:
+./bin/run.sh dev        # runs `npm run dev`
+```
+The script automatically changes to the repository root before invoking npm, so it works from any location.
+
+
 ---
 
 ## API Endpoints
