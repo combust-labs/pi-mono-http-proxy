@@ -7,10 +7,11 @@ import { RpcManager } from './rpcManager';
 import type { ImageContent } from '../node_modules/@mariozechner/pi-ai/dist/types'
 import type { RpcClientOptions } from '../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client'
 
-import { incHttpRequests, register, contentType, incMessagesSent, incMessagesReceived, addBytesSent, addBytesReceived } from './metrics';
+import { incHttpRequests, register, contentType, incMessagesSent, incMessagesReceived, addBytesSent, addBytesReceived, incToolCalls } from './metrics';
 import logger from './logger';
 
 // Simple command‑line flag parsing (e.g., "--port=4000" or "--host=127.0.0.1")
+
 function parseFlags(): Record<string, string> {
   const result: Record<string, string> = {};
   for (const arg of process.argv.slice(2)) {
@@ -32,6 +33,17 @@ const app = express();
 // Record server start time for uptime calculation
 const serverStartTime = Date.now();
 app.use(cors());
+
+// Expose Prometheus metrics at /metrics
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await register.metrics();
+    res.set('Content-Type', contentType);
+    res.send(metrics);
+  } catch (err) {
+    res.status(500).send(`Metrics error: ${err}`);
+  }
+});
 app.use(express.json({ limit: "10mb" }));
 
 // Middleware to record HTTP request metrics after response finishes
@@ -125,7 +137,7 @@ app.post("/clients/:id/message", async (req, res) => {
   if (streamCommands.has(type)) {
     const { message, images, streamingBehavior } = payload as { message: string; images?: ImageContent[]; streamingBehavior?: string };
     // Increment sent metrics (one message per request)
-    incMessagesSent(getLabels());
+    incMessagesSent({ ...getLabels(), type });
     // Approximate bytes sent (JSON payload size)
     addBytesSent(getLabels(), Buffer.byteLength(JSON.stringify(payload)));
 
@@ -145,8 +157,12 @@ app.post("/clients/:id/message", async (req, res) => {
         const eventStr = JSON.stringify(event) + "\n";
         res.write(eventStr);
         // Metrics for messages received from client
-        incMessagesReceived(getLabels());
+        incMessagesReceived({ ...getLabels(), type: event.type });
         addBytesReceived(getLabels(), Buffer.byteLength(eventStr));
+        // Increment tool call metric when a tool call ends
+        if (event.type === "toolcall_end" && event.toolCall && event.toolCall.name) {
+          incToolCalls({ ...getLabels(), tool: event.toolCall.name });
+        }
         if (event.type === "agent_end") {
           logger.info(`[Message][${id}] Agent ended, cleaning up`);
           cleanup();

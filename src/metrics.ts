@@ -18,7 +18,7 @@ export const httpRequestsTotal = new Counter({
 export const messagesSentTotal = new Counter({
   name: 'rpc_client_messages_sent_total',
   help: 'Total number of messages sent to RPC clients',
-  labelNames: ['client', 'name', 'provider', 'model'],
+  labelNames: ['client', 'name', 'provider', 'model', 'type'],
   registers: [register],
 });
 
@@ -26,7 +26,15 @@ export const messagesSentTotal = new Counter({
 export const messagesReceivedTotal = new Counter({
   name: 'rpc_client_messages_received_total',
   help: 'Total number of messages received from RPC clients',
-  labelNames: ['client', 'name', 'provider', 'model'],
+  labelNames: ['client', 'name', 'provider', 'model', 'type'],
+  registers: [register],
+});
+
+// Counter for tool calls made by RPC clients (per client and tool name)
+export const toolCallsTotal = new Counter({
+  name: 'rpc_client_tool_calls_total',
+  help: 'Total number of tool calls made by RPC clients',
+  labelNames: ['client', 'name', 'provider', 'model', 'tool'],
   registers: [register],
 });
 
@@ -57,17 +65,27 @@ export function incHttpRequests(method: string, route: string, status: number) {
   httpRequestsTotal.inc({ method, route, status: String(status) });
 }
 
-export function incMessagesSent(labels: { client: string, name?: string, provider?: string, model?: string }) {
+export function incMessagesSent(labels: { client: string, name?: string, provider?: string, model?: string, type?: string }) {
   // Ensure all label keys exist
-  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '', type: labels.type ?? '' };
   messagesSentTotal.inc(full);
 }
 
-export function incMessagesReceived(labels: { client: string, name?: string, provider?: string, model?: string }) {
-  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
+export function incMessagesReceived(labels: { client: string, name?: string, provider?: string, model?: string, type?: string }) {
+  const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '', type: labels.type ?? '' };
   messagesReceivedTotal.inc(full);
 }
 
+export function incToolCalls(labels: { client: string, name?: string, provider?: string, model?: string, tool: string }) {
+  const full = {
+    client: labels.client,
+    name: labels.name ?? '',
+    provider: labels.provider ?? '',
+    model: labels.model ?? '',
+    tool: labels.tool,
+  };
+  toolCallsTotal.inc(full);
+}
 export function addBytesSent(labels: { client: string, name?: string, provider?: string, model?: string }, bytes: number) {
   const full = { client: labels.client, name: labels.name ?? '', provider: labels.provider ?? '', model: labels.model ?? '' };
   bytesSentTotal.inc(full, bytes);
