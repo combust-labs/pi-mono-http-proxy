@@ -82,10 +82,14 @@ app.get("/clients", (req, res) => {
 });
 
 // Create new RPC client
-app.post("/clients", (req, res, next) => {
+interface CreateClientPayload extends RpcClientOptions {
+  name?: string;
+}
+
+app.post("/clients", (req: Request<any, any, CreateClientPayload>, res, next) => {
   (async () => {
     try {
-      const { name, ...rest } = req.body ?? {};
+      const { name, ...rest } = req.body;
       const options: RpcClientOptions = rest;
       const id = await manager.create(options, name);
       res.status(201).json({ id });
@@ -98,17 +102,19 @@ app.post("/clients", (req, res, next) => {
 });
 
 // Delete RPC client
-app.delete("/clients/:id", async (req, res) => {
-  const { id } = req.params;
-  const ok = await manager.delete(id);
-  const name = manager.getName(id);
-  if (ok) {
-    logger.info(`[RpcManager] Deleted client ${name ? `named "${name}"` : `with id ${id}`} `);
-    res.status(204).send();
-  } else {
-    logger.warn(`[RpcManager] Attempted to delete non‑existent client ${name ? `named "${name}"` : `with id ${id}`} `);
-    res.status(404).json({ error: "Client not found" });
-  }
+app.delete("/clients/:id", (req, res, next) => {
+  (async () => {
+    const { id } = req.params;
+    const ok = await manager.delete(id);
+    const name = manager.getName(id);
+    if (ok) {
+      logger.info(`[RpcManager] Deleted client ${name ? `named "${name}"` : `with id ${id}`} `);
+      res.status(204).send();
+    } else {
+      logger.warn(`[RpcManager] Attempted to delete non‑existent client ${name ? `named "${name}"` : `with id ${id}`} `);
+      res.status(404).json({ error: "Client not found" });
+    }
+  })().catch(next);
 });
 
 
@@ -316,12 +322,14 @@ const server = app.listen(port, host, () => {
 const shutdown = async () => {
   logger.info('Received shutdown signal, closing HTTP server...');
   if (server && server.listening) {
-    server.close(async (err) => {
-      if (err && (err as { code?: string }).code !== 'ERR_SERVER_NOT_RUNNING') {
-        logger.error('Error closing HTTP server:', err);
-      }
-      await manager.shutdown();
-      process.exit(err ? 1 : 0);
+    server.close((err) => {
+      void (async () => {
+        if (err && (err as { code?: string }).code !== 'ERR_SERVER_NOT_RUNNING') {
+          logger.error('Error closing HTTP server:', err);
+        }
+        await manager.shutdown();
+        process.exit(err ? 1 : 0);
+      })();
     });
   } else {
     await manager.shutdown();
@@ -329,10 +337,14 @@ const shutdown = async () => {
   }
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => {
+  void shutdown();
+});
+process.on('SIGTERM', () => {
+  void shutdown();
+});
 
-process.on('beforeExit', async (code) => {
+process.on('beforeExit', (code) => {
   logger.info(`Process beforeExit with code ${code}, shutting down RPC clients...`);
-  await manager.shutdown();
+  void manager.shutdown();
 });
