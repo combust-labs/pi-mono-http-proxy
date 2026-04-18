@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
+import type { ParamsDictionary } from 'express-serve-static-core';
 
 import logger from './logger';
 import {
@@ -91,7 +92,7 @@ interface CreateClientPayload extends RpcClientOptions {
   name?: string;
 }
 
-app.post("/clients", (req: Request<any, any, CreateClientPayload>, res, next) => {
+app.post("/clients", (req: Request<ParamsDictionary, unknown, CreateClientPayload>, res, next) => {
   (async () => {
     try {
       const { name, ...rest } = req.body;
