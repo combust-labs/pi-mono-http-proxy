@@ -26,6 +26,11 @@ function parseFlags(): Record<string, string> {
   return result;
 }
 
+// Helper to safely extract error messages without unsafe any access
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 const flags = parseFlags();
 // Environment variables take precedence over flags.
 const port = process.env.PORT ? Number(process.env.PORT) : (flags.port ? Number(flags.port) : 3000);
@@ -95,8 +100,8 @@ app.post("/clients", (req: Request<any, any, CreateClientPayload>, res, next) =>
       res.status(201).json({ id });
       logger.info(`[RpcManager] Created client ${name ? `named "${name}"` : `with id ${id}`} `);
     } catch (e) {
-      const err = e as Error;
-      res.status(500).json({ error: err.message });
+      const message = e instanceof Error ? e.message : String(e);
+      res.status(500).json({ error: message });
     }
   })().catch(next);
 });
@@ -133,12 +138,19 @@ app.post("/clients/:id/message", (req, res, next) => {
     const type = (payload as { type?: string }).type ?? "prompt";
 
     // Helper to get metric labels for this client
-    const getLabels = () => {
+    interface MetricLabels {
+      client: string;
+      name?: string;
+      provider?: string;
+      model?: string;
+      type?: string;
+    }
+    const getLabels = (): MetricLabels => {
       const name = manager.getName(id) ?? id;
       const opts = manager.list()[id] ?? {} as Partial<RpcClientOptions>;
       const provider = opts.provider;
       const model = opts.model ?? '';
-      const labels: any = { client: id, name, model };
+      const labels: MetricLabels = { client: id, name, model };
       if (provider) labels.provider = provider;
       return labels;
     };
@@ -208,7 +220,8 @@ app.post("/clients/:id/message", (req, res, next) => {
         unsubscribe();
         if (e instanceof Error) {
           logger.error(`[Message][${id}] ${type} error:`, e);
-          res.status(500).json({ error: e.message });
+          const message = getErrorMessage(e);
+      res.status(500).json({ error: message });
         } else {
           logger.error(`[Message][${id}] ${type} unknown error`, e);
           res.status(500).json({ error: 'Internal server error' });
@@ -302,7 +315,8 @@ app.post("/clients/:id/message", (req, res, next) => {
       res.json({ type, result });
     } catch (e) {
       logger.error(`[Message][${id}] Command '${type}' error:`, e);
-      res.status(500).json({ error: e.message });
+      const message = e instanceof Error ? e.message : String(e);
+      res.status(500).json({ error: message });
     }
   })().catch(next);
 });
