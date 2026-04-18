@@ -90,8 +90,9 @@ app.post("/clients", (req, res, next) => {
       const id = await manager.create(options, name);
       res.status(201).json({ id });
       logger.info(`[RpcManager] Created client ${name ? `named "${name}"` : `with id ${id}`} `);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
+    } catch (e) {
+      const err = e as Error;
+      res.status(500).json({ error: err.message });
     }
   })().catch(next);
 });
@@ -128,7 +129,7 @@ app.post("/clients/:id/message", (req, res, next) => {
     // Helper to get metric labels for this client
     const getLabels = () => {
       const name = manager.getName(id) ?? id;
-      const opts = manager.list()[id] ?? {} as any;
+      const opts = manager.list()[id] ?? {} as Partial<RpcClientOptions>;
       const provider = opts.provider;
       const model = opts.model ?? '';
       const labels: any = { client: id, name, model };
@@ -219,17 +220,17 @@ app.post("/clients/:id/message", (req, res, next) => {
           result = { success: true };
           break;
         case "bash":
-          result = await client.bash((payload as any).command);
+          result = await client.bash((payload as Record<string, unknown>).command as string);
           break;
         case "abort_bash":
           await client.abortBash();
           result = { success: true };
           break;
         case "new_session":
-          result = await client.newSession((payload as any).parentSession);
+          result = await client.newSession((payload as Record<string, unknown>).parentSession as string);
           break;
         case "set_model":
-          result = await client.setModel((payload as any).provider, (payload as any).modelId);
+          result = await client.setModel((payload as Record<string, unknown>).provider as string, (payload as Record<string, unknown>).modelId as string);
           break;
         case "cycle_model":
           result = await client.cycleModel();
@@ -238,22 +239,22 @@ app.post("/clients/:id/message", (req, res, next) => {
           result = await client.getState();
           break;
         case "set_steering_mode":
-          await client.setSteeringMode((payload as any).mode);
+          await client.setSteeringMode((payload as Record<string, unknown>).mode as any);
           result = { success: true };
           break;
         case "set_follow_up_mode":
-          await client.setFollowUpMode((payload as any).mode);
+          await client.setFollowUpMode((payload as Record<string, unknown>).mode as any);
           result = { success: true };
           break;
         case "compact":
-          result = await client.compact((payload as any).customInstructions);
+          result = await client.compact((payload as Record<string, unknown>).customInstructions as string);
           break;
         case "set_auto_compaction":
-          await client.setAutoCompaction((payload as any).enabled);
+          await client.setAutoCompaction((payload as Record<string, unknown>).enabled as boolean);
           result = { success: true };
           break;
         case "set_auto_retry":
-          await client.setAutoRetry((payload as any).enabled);
+          await client.setAutoRetry((payload as Record<string, unknown>).enabled as boolean);
           result = { success: true };
           break;
         case "abort_retry":
@@ -264,13 +265,13 @@ app.post("/clients/:id/message", (req, res, next) => {
           result = await client.getSessionStats();
           break;
         case "export_html":
-          result = await client.exportHtml((payload as any).outputPath);
+          result = await client.exportHtml((payload as Record<string, unknown>).outputPath as string);
           break;
         case "switch_session":
-          result = await client.switchSession((payload as any).sessionPath);
+          result = await client.switchSession((payload as Record<string, unknown>).sessionPath as string);
           break;
         case "fork":
-          result = await client.fork((payload as any).entryId);
+          result = await client.fork((payload as Record<string, unknown>).entryId as string);
           break;
         case "get_fork_messages":
           result = await client.getForkMessages();
@@ -279,7 +280,7 @@ app.post("/clients/:id/message", (req, res, next) => {
           result = await client.getLastAssistantText();
           break;
         case "set_session_name":
-          await client.setSessionName((payload as any).name);
+          await client.setSessionName((payload as Record<string, unknown>).name as string);
           result = { success: true };
           break;
         case "get_messages":
@@ -293,7 +294,7 @@ app.post("/clients/:id/message", (req, res, next) => {
           return;
       }
       res.json({ type, result });
-    } catch (e: any) {
+    } catch (e) {
       logger.error(`[Message][${id}] Command '${type}' error:`, e);
       res.status(500).json({ error: e.message });
     }
@@ -314,9 +315,9 @@ const server = app.listen(port, host, () => {
 // Graceful shutdown handling
 const shutdown = async () => {
   logger.info('Received shutdown signal, closing HTTP server...');
-  if (server && (server as any).listening) {
+  if (server && server.listening) {
     server.close(async (err) => {
-      if (err && (err as any).code !== 'ERR_SERVER_NOT_RUNNING') {
+      if (err && (err as { code?: string }).code !== 'ERR_SERVER_NOT_RUNNING') {
         logger.error('Error closing HTTP server:', err);
       }
       await manager.shutdown();
