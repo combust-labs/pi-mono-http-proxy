@@ -14,15 +14,15 @@ import { RpcManager } from './rpcManager';
 // Mock the external RpcClient module to avoid spawning real processes
 jest.mock('../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client', () => {
   class MockRpcClient {
-    constructor(public options: any) {}
+    constructor(public options: unknown) {}
     async start() { /* no‑op */ }
     async stop() { /* no‑op */ }
-    onEvent(_listener: any) { return () => {}; }
-    async prompt(_msg: string, _imgs?: any) { /* no‑op */ }
+    onEvent(_listener: (event: unknown) => void) { return () => {}; }
+    async prompt(_msg: string, _imgs?: unknown) { /* no‑op */ }
   }
   return {
     RpcClient: MockRpcClient,
-    RpcClientOptions: {} as any,
+    RpcClientOptions: {} as unknown,
   };
 });
 
