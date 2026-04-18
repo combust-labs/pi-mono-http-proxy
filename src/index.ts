@@ -8,6 +8,7 @@ import type { ImageContent } from '../node_modules/@mariozechner/pi-ai/dist/type
 import type { RpcClientOptions } from '../node_modules/@mariozechner/pi-coding-agent/dist/modes/rpc/rpc-client'
 
 import { incHttpRequests, register, contentType, incMessagesSent, incMessagesReceived, addBytesSent, addBytesReceived } from './metrics';
+import logger from './logger';
 
 // Simple command‑line flag parsing (e.g., "--port=4000" or "--host=127.0.0.1")
 function parseFlags(): Record<string, string> {
@@ -49,12 +50,17 @@ const manager = new RpcManager();
 // Load RPC client configuration from either an env var or a command‑line flag.
 // Flag name: --config (or --rpc-config) – env var RPC_CONFIG_PATH takes precedence.
 const configPath = process.env.RPC_CONFIG_PATH ?? flags.config ?? flags.rpcConfig;
-if (configPath) {
-  manager.loadFromFile(configPath).catch(e => {
-    console.error('Failed to load RPC client configuration:', e);
-  });
-}
 
+// Async initialization: load config (if any) and then start the server
+(async () => {
+  if (configPath) {
+    try {
+      await manager.loadFromFile(configPath);
+    } catch (e) {
+      logger.error('Failed to load RPC client configuration:', e);
+    }
+  }
+})();
 // List existing RPC clients (id -> creation options)
 app.get("/clients", (req, res) => {
   const list = manager.list();
@@ -68,7 +74,7 @@ app.post("/clients", async (req, res) => {
     const options: RpcClientOptions = rest;
     const id = await manager.create(options, name);
     res.status(201).json({ id });
-    console.log(`[RpcManager] Created client ${name ? `named "${name}"` : `with id ${id}`} `);
+    logger.info(`[RpcManager] Created client ${name ? `named "${name}"` : `with id ${id}`} `);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -80,21 +86,22 @@ app.delete("/clients/:id", async (req, res) => {
   const ok = await manager.delete(id);
   const name = manager.getName(id);
   if (ok) {
-    console.log(`[RpcManager] Deleted client ${name ? `named "${name}"` : `with id ${id}`} `);
+    logger.info(`[RpcManager] Deleted client ${name ? `named "${name}"` : `with id ${id}`} `);
     res.status(204).send();
   } else {
-    console.warn(`[RpcManager] Attempted to delete non‑existent client ${name ? `named "${name}"` : `with id ${id}`} `);
+    logger.warn(`[RpcManager] Attempted to delete non‑existent client ${name ? `named "${name}"` : `with id ${id}`} `);
     res.status(404).json({ error: "Client not found" });
   }
 });
 
+
 // Send a message to a client and stream JSONL events
 app.post("/clients/:id/message", async (req, res) => {
   const { id } = req.params;
-  console.log(`[Message] Received request for client ${id}`);
+  logger.info(`[Message] Received request for client ${id}`);
   const client = manager.get(id);
   if (!client) {
-    console.warn(`[Message] Client not found: ${id}`);
+    logger.warn(`[Message] Client not found: ${id}`);
     res.status(404).json({ error: "Client not found" });
     return;
   }
@@ -123,7 +130,7 @@ app.post("/clients/:id/message", async (req, res) => {
     addBytesSent(getLabels(), Buffer.byteLength(JSON.stringify(payload)));
 
     if (typeof message !== "string") {
-      console.warn(`[Message] Invalid message payload for client ${id}`);
+      logger.warn(`[Message] Invalid message payload for client ${id}`);
       res.status(400).json({ error: "Missing or invalid 'message'" });
       return;
     }
@@ -133,7 +140,7 @@ app.post("/clients/:id/message", async (req, res) => {
     res.flushHeaders();
     const listener = (event: any) => {
       // Log the full event for debugging/monitoring purposes
-      console.log(`[Message][${id}] Event received:`, JSON.stringify(event));
+      logger.debug(`[Message][${id}] Event received:`, JSON.stringify(event));
       try {
         const eventStr = JSON.stringify(event) + "\n";
         res.write(eventStr);
@@ -141,7 +148,7 @@ app.post("/clients/:id/message", async (req, res) => {
         incMessagesReceived(getLabels());
         addBytesReceived(getLabels(), Buffer.byteLength(eventStr));
         if (event.type === "agent_end") {
-          console.log(`[Message][${id}] Agent ended, cleaning up`);
+          logger.info(`[Message][${id}] Agent ended, cleaning up`);
           cleanup();
           res.end();
         }
@@ -157,12 +164,12 @@ app.post("/clients/:id/message", async (req, res) => {
     unsubscribe = client.onEvent(listener);
     // Cleanup if the request is aborted
     req.on("aborted", () => {
-      console.warn(`[Message][${id}] Request aborted by client`);
+      logger.warn(`[Message][${id}] Request aborted by client`);
       if (unsubscribe) unsubscribe();
     });
     // Also clean up when the response is closed (e.g., client disconnects after streaming)
     res.on("close", () => {
-      console.warn(`[Message][${id}] Response closed`);
+      logger.warn(`[Message][${id}] Response closed`);
       if (unsubscribe) unsubscribe();
     });
 
@@ -174,10 +181,10 @@ app.post("/clients/:id/message", async (req, res) => {
       } else if (type === "follow_up") {
         await client.followUp(message, images);
       }
-      console.log(`[Message][${id}] ${type} sent, awaiting events`);
+      logger.info(`[Message][${id}] ${type} sent, awaiting events`);
     } catch (e: any) {
       unsubscribe();
-      console.error(`[Message][${id}] ${type} error:`, e);
+      logger.error(`[Message][${id}] ${type} error:`, e);
       res.status(500).json({ error: e.message });
     }
     return;
@@ -267,7 +274,7 @@ app.post("/clients/:id/message", async (req, res) => {
     }
     res.json({ type, result });
   } catch (e: any) {
-    console.error(`[Message][${id}] Command '${type}' error:`, e);
+    logger.error(`[Message][${id}] Command '${type}' error:`, e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -278,44 +285,31 @@ app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', uptime: `${uptimeSeconds}` });
 });
 
-// (host & port are now defined above after flag parsing)
-app.get('/metrics', async (req, res) => {
-  try {
-    const metrics = await register.metrics();
-    res.setHeader('Content-Type', contentType);
-    res.end(metrics);
-  } catch (e) {
-    console.error('Error collecting metrics', e);
-    res.status(500).end('Error collecting metrics');
-  }
-});
-
+// Start HTTP server after all routes are defined
 const server = app.listen(port, host, () => {
-  console.log(`Pi RPC HTTP server listening on ${host}:${port}`);
+  logger.info(`Pi RPC HTTP server listening on ${host}:${port}`);
 });
 
 // Graceful shutdown handling
 const shutdown = async () => {
-  console.log('Received shutdown signal, closing HTTP server...');
-  // If the server is not listening, skip close to avoid ERR_SERVER_NOT_RUNNING
+  logger.info('Received shutdown signal, closing HTTP server...');
   if (server && (server as any).listening) {
     server.close(async (err) => {
       if (err && (err as any).code !== 'ERR_SERVER_NOT_RUNNING') {
-        console.error('Error closing HTTP server:', err);
+        logger.error('Error closing HTTP server:', err);
       }
       try {
         await manager.shutdown();
       } catch (e) {
-        console.error('Error during RPC manager shutdown:', e);
+        logger.error('Error during RPC manager shutdown:', e);
       }
       process.exit(err ? 1 : 0);
     });
   } else {
-    // Server not running; just shut down RPC clients
     try {
       await manager.shutdown();
     } catch (e) {
-      console.error('Error during RPC manager shutdown:', e);
+      logger.error('Error during RPC manager shutdown:', e);
     }
     process.exit(0);
   }
@@ -324,13 +318,11 @@ const shutdown = async () => {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Ensure RPC clients are shut down on process exit (e.g., uncaught exceptions)
 process.on('beforeExit', async (code) => {
-  console.log(`Process beforeExit with code ${code}, shutting down RPC clients...`);
+  logger.info(`Process beforeExit with code ${code}, shutting down RPC clients...`);
   try {
     await manager.shutdown();
   } catch (e) {
-    console.error('Error during RPC manager shutdown on beforeExit:', e);
+    logger.error('Error during RPC manager shutdown on beforeExit:', e);
   }
 });
-
