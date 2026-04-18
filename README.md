@@ -58,6 +58,8 @@ The script automatically changes to the repository root before invoking npm, so 
 ## API Endpoints
 All request/response bodies are JSON unless otherwise noted.
 
+**Note**: The server now uses a Winston logger for structured logging (configurable via `LOG_LEVEL`). Metrics are collected using `prom-client`; however, the `/metrics` endpoint has been removed from the server. You can expose the Prometheus metrics registry through your own endpoint or reverse proxy.
+
 ### Create a client
 **`POST /clients`**
 ```json
@@ -200,6 +202,8 @@ The `-N` flag tells `curl` to **not buffer** the output, allowing you to see eve
 - The server does **not** implement authentication or rate‑limiting – add a reverse proxy or middleware if needed.
 - Image handling expects the same shape as `ImageContent` from the Pi SDK (base64 data, MIME type, etc.).
 - Because the RPC client streams events over stdout, the HTTP endpoint forwards them unchanged; any client capable of parsing JSONL can consume the stream.
+- Logging is handled by Winston; set `LOG_LEVEL` (e.g., `debug`, `info`, `warn`, `error`) to control verbosity.
+- Metrics are collected via `prom-client`. The server no longer exposes a built‑in `/metrics` endpoint; expose the `register` registry yourself if you need Prometheus scraping.
 
 ### Hugging Face Dataset
 The `hf-push-sessions` utility can push saved RPC client session files to a Hugging Face dataset. After running it, the dataset will be publicly available (or private depending on the repo settings) at:
@@ -214,3 +218,6 @@ You can browse the uploaded session files there, or use the Hugging Face Hub A
 ## License
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 This project is licensed under the Apache License, Version 2.0. See the LICENSE file for details.
+
+## Logging
+The server uses **Winston** for all logging. By default logs are printed to the console with timestamps and colourised levels. Adjust the log level with the `LOG_LEVEL` environment variable (default `info`).
