@@ -9,6 +9,7 @@
  */
 
 import fs from 'fs';
+import logger from './logger';
 import path from 'path';
 import { execSync } from 'child_process';
 
@@ -16,7 +17,7 @@ import { execSync } from 'child_process';
  * Simple helper to print usage information.
  */
 function printUsage() {
-  console.log(`Usage: hf-push-sessions [options]
+  logger.info(`Usage: hf-push-sessions [options]
 
 Options:
   --session-dir <dir>   Directory containing session files to push (default: ./sessions)
@@ -43,7 +44,7 @@ async function main() {
       printUsage();
       process.exit(0);
     } else {
-      console.error(`Unknown option: ${args[i]}`);
+      logger.error(`Unknown option: ${args[i]}`);
       printUsage();
       process.exit(1);
     }
@@ -54,29 +55,29 @@ async function main() {
   const token = opts.token ?? process.env.HF_TOKEN;
 
   if (!repo) {
-    console.error('Error: --repo is required');
+    logger.error('Error: --repo is required');
     printUsage();
     process.exit(1);
   }
   if (!token) {
-    console.error('Error: Hugging Face token not provided (use --token or HF_TOKEN env)');
+    logger.error('Error: Hugging Face token not provided (use --token or HF_TOKEN env)');
     process.exit(1);
   }
 
   // Ensure the session directory exists
   if (!fs.existsSync(sessionDir) || !fs.statSync(sessionDir).isDirectory()) {
-    console.error(`Session directory does not exist: ${sessionDir}`);
+    logger.error(`Session directory does not exist: ${sessionDir}`);
     process.exit(1);
   }
 
   // Collect all files in the session directory
   const files = fs.readdirSync(sessionDir).filter(f => fs.statSync(path.join(sessionDir, f)).isFile());
   if (files.length === 0) {
-    console.log('No session files found to push.');
+    logger.info('No session files found to push.');
     return;
   }
 
-  console.log(`Pushing ${files.length} session file(s) to ${repo}...`);
+  logger.info(`Pushing ${files.length} session file(s) to ${repo}...`);
 
   // Simple approach: use the `huggingface-cli` if available.
   // This avoids adding a heavy dependency just for a placeholder.
@@ -98,9 +99,9 @@ async function main() {
     execSync('git add .', { cwd: tmpDir, stdio: 'inherit' });
     execSync('git commit -m "Add session files"', { cwd: tmpDir, stdio: 'inherit' });
     execSync('git push', { cwd: tmpDir, stdio: 'inherit' });
-    console.log('Push completed successfully.');
+    logger.info('Push completed successfully.');
   } catch (e) {
-    console.error('Failed to push sessions:', e);
+    logger.error('Failed to push sessions:', e);
     process.exit(1);
   }
 }
