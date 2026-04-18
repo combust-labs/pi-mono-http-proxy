@@ -232,6 +232,7 @@ app.post("/clients/:id/message", (req, res, next) => {
 
     // Non‑streaming commands – handle and respond with JSON
     try {
+      type Mode = "all" | "one-at-a-time";
       let result: unknown;
       switch (type) {
         case "abort":
@@ -257,14 +258,26 @@ app.post("/clients/:id/message", (req, res, next) => {
         case "get_state":
           result = await client.getState();
           break;
-        case "set_steering_mode":
-          await client.setSteeringMode((payload as Record<string, unknown>).mode as any);
+        case "set_steering_mode": {
+          const mode = (payload as { mode?: Mode }).mode;
+          if (mode !== "all" && mode !== "one-at-a-time") {
+            res.status(400).json({ error: "Invalid mode for set_steering_mode" });
+            return;
+          }
+          await client.setSteeringMode(mode);
           result = { success: true };
           break;
-        case "set_follow_up_mode":
-          await client.setFollowUpMode((payload as Record<string, unknown>).mode as any);
+        }
+        case "set_follow_up_mode": {
+          const mode = (payload as { mode?: Mode }).mode;
+          if (mode !== "all" && mode !== "one-at-a-time") {
+            res.status(400).json({ error: "Invalid mode for set_follow_up_mode" });
+            return;
+          }
+          await client.setFollowUpMode(mode);
           result = { success: true };
           break;
+        }
         case "compact":
           result = await client.compact((payload as Record<string, unknown>).customInstructions as string);
           break;
