@@ -11,6 +11,7 @@
 import fs from 'fs';
 import logger from './logger';
 import path from 'path';
+import os from 'os';
 import { execSync } from 'child_process';
 
 /**
@@ -29,7 +30,7 @@ Options:
 /**
  * Main entry point.
  */
-async function main() {
+function main() {
   const args = process.argv.slice(2);
   const opts: Record<string, string> = {};
 
@@ -87,7 +88,7 @@ async function main() {
     // Create repo if it doesn't exist
     execSync(`huggingface-cli repo create ${repo} --type model --private`, { stdio: 'inherit' });
     // Clone the repo to a temp folder
-    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'hf-repo-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hf-repo-'));
     execSync(`git clone https://huggingface.co/${repo} ${tmpDir}`, { stdio: 'inherit' });
     // Copy session files into the repo
     for (const file of files) {
